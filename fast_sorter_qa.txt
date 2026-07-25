@@ -1,0 +1,382 @@
+================================================================================
+FAST IMAGE SORTER — Q&A SHEET
+Lightning Fast Image Sorter (fast_sorter.py / FastImageSorter.exe)
+================================================================================
+
+--------------------------------------------------------------------------------
+1. WHAT IS IT?
+--------------------------------------------------------------------------------
+
+Q: What does Fast Image Sorter do?
+A: It is a desktop tool for quickly reviewing crop images and moving them into
+   category folders (for CNN training or QC). You use the keyboard and mouse to
+   sort hundreds or thousands of images much faster than drag-and-drop in Windows
+   Explorer.
+
+Q: How is it different from Auto Sorter?
+A: Fast Sorter is manual — you decide every move. Auto Sorter uses a trained CNN
+   to classify images automatically. Use Fast Sorter to build or fix training
+   data; use Auto Sorter for bulk pre-sorting.
+
+Q: Do I need Python installed?
+A: No, if you use FastImageSorter.exe. Double-click the .exe. If you run from
+   source, you need Python plus Pillow (see requirements-fast_sorter.txt).
+
+Q: Windows says "Unknown publisher" or SmartScreen blocked it. Is it safe?
+A: The .exe is built locally with PyInstaller and is not code-signed. Click
+   "More info" → "Run anyway" if you trust whoever gave you the file. For
+   maximum trust, run fast_sorter.py from source in your own environment.
+
+
+--------------------------------------------------------------------------------
+2. GETTING STARTED
+--------------------------------------------------------------------------------
+
+Q: What are the first steps every time?
+A: 1) Select Input Folder — folder with unsorted images (searched recursively).
+   2) Select Destination Folder — parent folder whose subfolders are your
+      categories (e.g. Navicula, Round Particles, Favorites).
+   3) Review images and sort with number keys or Mark Reviewed.
+
+Q: Where do categories / hotkey labels come from?
+A: From subfolder names inside the Destination folder you pick — not from a
+   fixed list in config. Change destination → legend updates automatically.
+
+Q: What image formats are supported?
+A: .png, .jpg, .jpeg, .tif, .tiff, .bmp
+
+Q: Does it search subfolders in the input directory?
+A: Yes. All matching images under the input folder tree are loaded into the queue.
+
+Q: What if I forget to pick a destination before sorting?
+A: You'll get an error: "Please Select Destination Folder first!" Pick
+   destination, then sort again.
+
+
+--------------------------------------------------------------------------------
+3. SORTING & MOVING FILES
+--------------------------------------------------------------------------------
+
+Q: How do I move an image to a category?
+A: Press the number key shown in the legend (1–0 for categories 1–10, Shift+1–0
+   for 11–20, Ctrl+1–0 for 21–30). The file is moved on disk into that
+   subfolder under your destination.
+
+Q: What does F (Favorite) do?
+A: Moves the selected image(s) to a "Favorites" subfolder under destination.
+   If Favorites doesn't exist, it is created.
+
+Q: Does sorting delete files?
+A: No. Sorting moves files from the input location to a category folder under
+   destination. The file leaves the input tree.
+
+Q: What if a filename already exists in the target folder?
+A: The app adds _1, _2, etc. before the extension to avoid overwriting.
+
+Q: Can I sort multiple images at once?
+A: Yes, in Gallery mode. Ctrl+Click or Shift+Click to select multiple, then
+   press a category key or F. All selected images move together.
+
+Q: What is the green flash on the legend?
+A: Brief visual confirmation of which category you just triggered.
+
+
+--------------------------------------------------------------------------------
+4. "MARK REVIEWED" vs SORTING
+--------------------------------------------------------------------------------
+
+Q: What's the difference between sorting and Mark Reviewed?
+A: Sorting MOVES the file to a category folder. Mark Reviewed leaves the file
+   where it is and removes it from your working queue — meaning "I looked at it;
+   it's already in the right place."
+
+Q: How do I Mark Reviewed?
+A: Button "Mark Reviewed (M)" or press M. Applies to current selection (or
+   single image in slideshow).
+
+Q: What does Mark All Reviewed do?
+A: Marks every remaining image in the queue as reviewed without moving any files.
+   Asks for confirmation. Shortcut: Ctrl+M. Use when an entire folder is already
+   correct.
+
+Q: Does arrow-key navigation mark images reviewed?
+A: No. Left/Right only change which image is selected. Reviewed status is
+   explicit: M, Ctrl+M, or the toolbar buttons only.
+
+Q: Why would I use Mark Reviewed instead of sorting?
+A: After CNN auto-sort, many crops may already sit in the correct class folder.
+   Mark Reviewed lets you clear them from the queue without redundant moves.
+
+
+--------------------------------------------------------------------------------
+5. SLIDESHOW vs GALLERY
+--------------------------------------------------------------------------------
+
+Q: What's Slideshow mode?
+A: One large image at a time, fit to the window (with zoom). Best for careful
+   inspection of a single crop.
+
+Q: What's Gallery mode?
+A: A scrollable grid of thumbnails. Best for scanning many images and batch
+   selecting similar ones.
+
+Q: How do I switch modes?
+A: Radio buttons "Slideshow" / "Gallery" in the toolbar.
+
+Q: How do I jump from gallery to slideshow on one image?
+A: Double-click the thumbnail. Opens slideshow on that image.
+
+Q: How do I get back to gallery from slideshow?
+A: Click the image, double-click it, or press Esc.
+
+Q: Why do gallery thumbnails look cropped/filled?
+A: Thumbnails use center-crop fill so cells are uniform — easier to compare
+   shapes at a glance. Slideshow shows the full image (scaled).
+
+
+--------------------------------------------------------------------------------
+6. SELECTION (GALLERY)
+--------------------------------------------------------------------------------
+
+Q: How do I select one image?
+A: Single click. Green border = primary/focus image.
+
+Q: How do I multi-select?
+A: Ctrl+Click toggles images in/out of selection. Cyan border = also selected.
+
+Q: How does Shift+Click work?
+A: Same row: selects range from anchor to clicked image.
+   Different rows: selects full rows between anchor row and clicked row.
+   Ctrl+Shift+Click adds that range to existing selection.
+
+Q: What is the selection anchor?
+A: The image where your last normal click or navigation landed. Shift+Click
+   ranges are measured from the anchor.
+
+Q: What does Esc do in gallery?
+A: Clears multi-select; keeps the current image selected.
+
+Q: What does Esc do in slideshow?
+A: Returns to gallery view (same image selected).
+
+
+--------------------------------------------------------------------------------
+7. ZOOM
+--------------------------------------------------------------------------------
+
+Q: How do I zoom?
+A: Zoom slider in toolbar, or +/- keys (also numpad +/−). Range about 25%–300%.
+
+Q: Does zoom affect both modes?
+A: Yes. Slideshow: image scales from fit-to-window; scrollbars appear if larger
+   than viewport. Gallery: thumbnail/cell size changes; fewer or more columns.
+
+Q: The +/- keys move the slider but nothing changed (older builds)?
+A: Current builds apply zoom immediately. Restart the app if using an old .exe.
+
+
+--------------------------------------------------------------------------------
+8. "NEW ONLY" FILTER
+--------------------------------------------------------------------------------
+
+Q: What is "New only"?
+A: Filters the queue to images that appeared since you last closed the app or
+   last opened a different input folder — useful after a new CNN dump.
+
+Q: How is "new" defined?
+A: Paths not in the saved "seen" list for that input folder and not already
+   marked passed/reviewed.
+
+Q: How do I toggle it?
+A: Checkbox "New only (N)" or press N.
+
+Q: First time opening a folder — are all images "new"?
+A: Yes, until you close the app (which marks current files as seen) or switch
+   input folders.
+
+Q: I turned on New only and the queue is empty.
+A: Everything was already seen in a prior session. Uncheck New only to see all
+   remaining (non-passed) images.
+
+
+--------------------------------------------------------------------------------
+9. PROGRESS, STATS & PERSISTENCE
+--------------------------------------------------------------------------------
+
+Q: Where is progress saved?
+A: fast_sorter_progress.json next to the .exe (or next to fast_sorter.py if
+   running from source).
+
+Q: What is stored per input folder?
+A: Current index, list of passed (reviewed-in-place) paths, and seen paths.
+
+Q: What do the status bar numbers mean?
+A: Remaining = still in queue. Passed = marked reviewed this session. Moved =
+   sorted to categories this session. New = count of unseen images. Done = 
+   passed + moved vs total loaded.
+
+Q: If I close and reopen, do I resume where I left off?
+A: Yes — same input folder restores index, passed, and seen state.
+
+Q: If I move an image to a category, is it gone from the queue forever?
+A: Yes for that input folder session. The file physically moved; it won't reappear
+   unless you undo or put it back manually.
+
+Q: Switching input folders — anything special?
+A: Progress for the previous folder is saved (including marking files as seen).
+
+
+--------------------------------------------------------------------------------
+10. UNDO
+--------------------------------------------------------------------------------
+
+Q: Can I undo a sort or Mark Reviewed?
+A: Yes. Ctrl+Z undoes the last action (single move, batch move, or batch pass).
+
+Q: Does undo restore files to the exact queue position?
+A: Moves and passes re-insert at the appropriate index; batch operations undo
+   as one step.
+
+
+--------------------------------------------------------------------------------
+11. PERFORMANCE & LARGE FOLDERS
+--------------------------------------------------------------------------------
+
+Q: Gallery is slow or crashed with tens of thousands of images.
+A: Gallery uses virtual scrolling — only visible thumbnails load. Very large
+   batches may still take time on first scroll; zoom out for more thumbnails
+   per screen. Slideshow mode uses one image at a time and is lighter.
+
+Q: I see gray boxes then images fill in.
+A: Normal. Thumbnails load in small batches as you scroll.
+
+Q: I saw black boxes with no images (older builds).
+A: Fixed in current builds (border/loading issues). Rebuild or use latest .exe.
+
+Q: "Fail to allocate bitmap" in terminal?
+A: Usually too many large images loaded at once. Use gallery virtual mode,
+   lower zoom, or work in smaller subfolders.
+
+
+--------------------------------------------------------------------------------
+12. KEYBOARD REFERENCE (QUICK)
+--------------------------------------------------------------------------------
+
+GLOBAL (both modes where applicable):
+  Left / Right     Navigate selection (does NOT mark reviewed)
+  1–0              Category 1–10
+  Shift+1–0        Category 11–20  (! @ # $ % ^ & * ( ) on US keyboard)
+  Ctrl+1–0         Category 21–30
+  F                Favorite
+  M                Mark selected reviewed
+  Ctrl+M           Mark all remaining reviewed (confirm)
+  N                Toggle New only filter
+  Ctrl+Z           Undo
+  + / -            Zoom in / out
+
+GALLERY ONLY:
+  Click            Select
+  Ctrl+Click       Toggle in selection
+  Shift+Click      Range / full rows
+  Double-click     Open slideshow on image
+  Esc              Clear multi-select
+
+SLIDESHOW ONLY:
+  Click / Dbl-click / Esc   Return to gallery
+
+
+--------------------------------------------------------------------------------
+13. TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+Q: No categories show in the legend.
+A: Destination folder has no subfolders, or path is wrong. Create one subfolder
+   per class under destination and re-select it.
+
+Q: "All images sorted!" but I know files are still there.
+A: Queue may be empty because all were passed, moved, or New-only filter hides
+   them. Check New only checkbox and progress file.
+
+Q: Hotkey 5 does nothing.
+A: You may have fewer than 5 categories, or focus is outside the app. Click
+   the window and try again.
+
+Q: Moved image still visible in gallery (stale thumbnail).
+A: Current builds force gallery refresh after moves. Update .exe or restart if
+   on an old build. Ctrl+Z then re-sort if index mismatch occurred.
+
+Q: Categories don't match my CNN training folders.
+A: Pick the same parent folder you use for GoldStandard / training. Subfolder
+   names must match class names exactly.
+
+Q: Progress file seems wrong / I want a fresh start for one folder.
+A: Close the app. Edit or delete fast_sorter_progress.json (remove that folder's
+   entry). Reopen and select input folder.
+
+Q: ModuleNotFoundError: PIL when running .py.
+A: pip install Pillow   (or use requirements-fast_sorter.txt)
+
+Q: exe won't start at all.
+A: Try running from source with Python 3.10+. Check antivirus quarantine.
+   Windows Defender sometimes flags unsigned PyInstaller builds.
+
+
+--------------------------------------------------------------------------------
+14. WORKFLOW TIPS (LAB / CNN PIPELINE)
+--------------------------------------------------------------------------------
+
+Q: Recommended workflow after Auto Sorter runs?
+A: 1) Input = CNN output folder (or Review folder). 2) Destination = GoldStandard
+   (or Silver). 3) Turn on New only. 4) Gallery scan → fix mislabels with
+   hotkeys. 5) Mark All Reviewed on folders that look correct.
+
+Q: How do I QC duplicates?
+A: Gallery + zoom; scan visually. New-only helps focus on fresh dumps. Sort or
+   mark reviewed as you confirm each.
+
+Q: Can two people share one progress file?
+A: Not recommended — progress is per machine/path. Share the image folders, not
+   the json file, or you'll get conflicting queue state.
+
+Q: Should I sort into GoldStandard or a scratch folder?
+A: GoldStandard if labels are trusted. Use a scratch/Review folder first if
+   you're unsure; move to GoldStandard after PI sign-off.
+
+
+--------------------------------------------------------------------------------
+15. TECHNICAL / IT QUESTIONS
+--------------------------------------------------------------------------------
+
+Q: Does it need internet?
+A: No. Fully offline.
+
+Q: Does it use the GPU?
+A: No. Fast Sorter is Tkinter + PIL only. GPU is for train_cnn / auto_sorter.
+
+Q: Where does config.py matter for Fast Sorter?
+A: Only for default destination hint on startup (first valid TRAINING_DIRECTORIES
+   path). Categories always come from the destination you pick in the UI.
+
+Q: How do I rebuild the .exe?
+A: From standalone_cnn_toolkit: run build_fast_sorter.bat, or
+   python -m PyInstaller --noconfirm --clean FastImageSorter.spec
+   Output: dist/FastImageSorter.exe
+
+Q: Is my data sent anywhere?
+A: No. All file operations are local move/copy on your disk.
+
+
+--------------------------------------------------------------------------------
+16. SHORT ELEVATOR PITCH (FOR PI / NEW USER)
+--------------------------------------------------------------------------------
+
+"Fast Image Sorter is a keyboard-driven image QC tool. Point it at a folder of
+crops and a destination with one subfolder per class. Flip through images or
+browse a gallery, press 1–9 to sort, M to mark already-correct files as done,
+and N to show only new arrivals since last time. It remembers progress so you
+can stop and resume, and Ctrl+Z fixes mistakes."
+
+
+================================================================================
+END OF Q&A SHEET
+================================================================================

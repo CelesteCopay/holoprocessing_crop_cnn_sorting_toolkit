@@ -1,0 +1,456 @@
+================================================================================
+CNN TRAINING GUIDE — standalone_cnn_toolkit
+ResNet-18, step-by-step workflow, and lab best practices
+================================================================================
+
+This guide explains how particle-image classification works in this toolkit,
+how we train ResNet-18 models, and how the pieces (Fast Sorter, training,
+evaluation, Auto Sorter) fit together.
+
+
+================================================================================
+PART 1 — THE BIG PICTURE
+================================================================================
+
+WHAT ARE WE TRYING TO DO?
+-------------------------
+We have thousands of small crop images (particles, diatoms, debris, etc.) and
+want a computer to label them automatically. A Convolutional Neural Network
+(CNN) learns visual patterns from examples you provide and predicts which
+category each new image belongs to.
+
+THE LOOP (HIGH LEVEL)
+---------------------
+  1. Humans sort crops into folders  →  labeled training data
+  2. train_cnn.py learns from those folders  →  .pth model file
+  3. evaluate_cnn.py tests on held-out images  →  accuracy report
+  4. auto_sorter.py runs the model on unsorted crops  →  bulk pre-sort
+  5. fast_sorter.py fixes mistakes and adds new labels  →  better data
+  6. Retrain when labels or classes change  →  improved model
+
+Think of the CNN as a student: it only knows what you teach it with labeled
+examples. Garbage labels in → garbage predictions out.
+
+
+================================================================================
+PART 2 — WHAT IS RESNET-18? (PLAIN LANGUAGE)
+================================================================================
+
+WHAT IS A CNN?
+--------------
+A Convolutional Neural Network is a type of deep learning model designed for
+images. It learns layers of features:
+  - Early layers: edges, blobs, simple textures
+  - Deeper layers: shapes, parts, class-specific patterns
+
+WHAT IS RESNET?
+---------------
+ResNet (Residual Network) is a popular CNN architecture. "ResNet-18" means
+18 weighted layers — relatively small and fast compared to ResNet-50 or huge
+modern models. For microscope crop images it is usually enough.
+
+WHAT IS RESNET-18 IN *THIS* PROJECT?
+------------------------------------
+We use PyTorch's torchvision.models.resnet18 with ImageNet pretraining:
+
+  - ImageNet = millions of general photos (cats, cars, etc.)
+  - The model already knows low-level vision (edges, textures)
+  - We replace the final layer ("fc") with a new layer sized for OUR classes
+  - Training adjusts the whole network gently for particle shapes
+
+This is called TRANSFER LEARNING: start from a general vision brain, specialize
+for diatoms/particles instead of training from scratch (which would need far
+more labeled data).
+
+WHAT THE MODEL OUTPUTS
+----------------------
+For each 224×224 image, the network outputs a score per class. Softmax turns
+those into probabilities (sum to 100%). The highest probability is the
+prediction. Auto Sorter also uses confidence thresholds to route uncertain
+images to "Review" or "Amorphous" (see Part 6).
+
+
+================================================================================
+PART 3 — HOW OUR TRAINING CODE WORKS (train_cnn.py)
+================================================================================
+
+DATA FORMAT (CRITICAL)
+----------------------
+Training expects one or more ROOT folders listed in config.TRAINING_DIRECTORIES.
+Each root contains SUBFOLDERS — one subfolder per class:
+
+  white_oval_train_data/
+    Square Particles/     ← class 1
+      img001.tif
+      img002.tif
+    Not Square/           ← class 2
+      img003.tif
+      ...
+
+Supported formats: .png, .jpg, .jpeg, .tif, .tiff, .bmp
+Images are converted to RGB before training.
+
+Class names = subfolder names (sorted alphabetically for index order).
+The order is saved to *_cnn_classes.json — Auto Sorter must use the SAME file.
+
+WHAT HAPPENS WHEN YOU RUN train_cnn.py
+--------------------------------------
+Step 1 — Load all images from TRAINING_DIRECTORIES
+Step 2 — Build class list and path/label pairs (MultiDirDataset)
+Step 3 — Random 80/20 split → train set vs validation set
+         (same image never in both; split is random each run unless you fix seed)
+Step 4 — Transforms:
+         TRAIN: resize 224×224, random flips, rotation ±45°, color jitter,
+                normalize with ImageNet mean/std
+         VAL:   resize 224×224, normalize only (no random augmentation)
+Step 5 — Class-balanced sampling (WeightedRandomSampler)
+         Rare classes (e.g. Square Particles) appear more often per epoch so
+         the model doesn't ignore them.
+Step 6 — Weighted CrossEntropyLoss (inverse frequency) — same goal
+Step 7 — Model: ResNet-18 pretrained, final layer → num_classes
+Step 8 — Optimizer: AdamW, lr=1e-4, weight decay 1e-4
+Step 9 — Learning rate scheduler: ReduceLROnPlateau on macro validation acc
+Step 10 — Each epoch:
+          - Train on sampled batches (capped samples/epoch for speed)
+          - Validate on held-out split
+          - Track per-class accuracy
+          - Save model when MACRO validation accuracy improves
+
+WHAT IS "MACRO" ACCURACY?
+-------------------------
+Average of per-class recall on the validation set — each class counts equally.
+Important when classes are imbalanced: overall accuracy can look great while
+a rare class (Square Particles) is never found. Macro accuracy exposes that.
+
+OUTPUT FILES
+------------
+  MODEL_SAVE_PATH     →  e.g. white_oval_resnet18.pth  (weights only)
+  CLASSES_SAVE_PATH   →  e.g. white_oval_cnn_classes.json  (class name list)
+
+Both must exist for auto_sorter.py and cnn_classifier.py to work.
+
+
+================================================================================
+PART 4 — CONFIG.PY (WHAT TO EDIT)
+================================================================================
+
+Open standalone_cnn_toolkit/config.py before training.
+
+TRAINING_DIRECTORIES
+  List of folders containing class subfolders. Can point to one built dataset
+  (e.g. square_train_data) or GoldStandard + SilverStandard combined.
+
+EVALUATION_DIR
+  Holdout test set — same subfolder structure, images the model never trained on.
+  Used by evaluate_cnn.py only.
+
+MODEL_SAVE_PATH / CLASSES_SAVE_PATH
+  Where the trained brain and class list are written. Change names when training
+  a different project (square vs white oval vs full diatom set) so you don't
+  overwrite another model.
+
+TRAINING_EPOCHS
+  Default 25. More epochs ≠ always better; watch validation macro acc plateau.
+
+REVIEW_CONFIDENCE_THRESHOLD (default 0.90)
+  Auto Sorter: if max confidence < 90%, image goes to "Review" folder instead
+  of a class folder (human QC).
+
+AMORPHOUS_THRESHOLD (default 0.45)
+  Auto Sorter: if confidence is very low AND "Amorphous" is a class, predict
+  Amorphous (junk / unclassifiable).
+
+MEMORY_RESET_EVERY_N_IMAGES (default 2000)
+  Auto Sorter only — clears GPU/RAM periodically on huge runs.
+
+FINETUNE_* and PSEUDO_LABEL_* — see Part 8 (advanced).
+
+
+================================================================================
+PART 5 — STEP-BY-STEP WORKFLOW
+================================================================================
+
+PHASE A — BUILD LABELED DATA
+----------------------------
+1. Decide classes (e.g. Square Particles vs Not Square, or full taxonomy).
+2. Create destination folder with one subfolder per class.
+3. Use Fast Image Sorter (fast_sorter.py or FastImageSorter.exe):
+   - Input = unsorted crops
+   - Destination = parent of class folders
+   - Sort with number keys; Mark Reviewed for already-correct files
+4. For training, copy or organize into a dedicated train folder structure
+   (see square_train_data / white_oval_train_data examples in toolkit).
+5. PI or senior member spot-checks critical classes (especially rare ones).
+
+PHASE B — CONFIGURE
+-------------------
+1. Edit config.py:
+   TRAINING_DIRECTORIES = [r"path\to\your_train_data"]
+   EVALUATION_DIR = r"path\to\your_eval_data"
+   MODEL_SAVE_PATH = ... unique name ...
+   CLASSES_SAVE_PATH = ... matching json name ...
+   TRAINING_EPOCHS = 25  (adjust as needed)
+
+PHASE C — TRAIN
+---------------
+1. Use Python environment with torch, torchvision, Pillow (see requirements.txt).
+   GPU strongly recommended (CUDA). CPU works but is slow.
+2. From standalone_cnn_toolkit folder:
+     python train_cnn.py
+3. Watch console output:
+   - Class counts (train split) — verify balance isn't extreme
+   - Macro Val Acc — primary metric for saving best model
+4. When finished, confirm .pth and *_classes.json exist.
+
+PHASE D — EVALUATE
+------------------
+1. Prepare EVALUATION_DIR with same class subfolder names as training.
+   Use images NOT used in training (e.g. NewGoldStandard, or held-out split).
+2. Run:
+     python evaluate_cnn.py
+3. Read:
+   - Overall accuracy
+   - Per-class recall (did we find squares when they are squares?)
+   - Macro-averaged recall
+   - Precision for target classes (when applicable)
+4. If rare class recall is poor, add more labeled examples and retrain — don't
+   trust overall accuracy alone.
+
+PHASE E — DEPLOY (AUTO SORT)
+----------------------------
+1. config.py must point MODEL_SAVE_PATH and CLASSES_SAVE_PATH to your new model.
+2. Run:
+     python auto_sorter.py
+3. Select unsorted input folder and destination folder.
+4. Model creates class subfolders + Review + Amorphous as needed.
+5. QC with Fast Sorter (New-only filter helps find fresh mislabels).
+
+PHASE F — ITERATE
+-----------------
+  More labels → retrain → re-evaluate → auto-sort → human fix → repeat
+
+
+================================================================================
+PART 6 — AUTO SORTER CONFIDENCE LOGIC (cnn_classifier.py)
+================================================================================
+
+For each image:
+  1. Resize 224×224, same normalization as training
+  2. Forward pass → class probabilities
+  3. Pick highest-probability class
+  4. Apply rules:
+     - confidence < AMORPHOUS_THRESHOLD (0.45) and "Amorphous" exists → Amorphous
+     - else confidence < REVIEW_CONFIDENCE_THRESHOLD (0.90) → Review
+     - else → predicted class folder
+
+"Review" is intentional — it keeps uncertain images out of training gold until
+a human confirms them. Do not train on Review folder without relabeling.
+
+
+================================================================================
+PART 7 — BINARY vs MULTI-CLASS EXAMPLES IN THIS REPO
+================================================================================
+
+SQUARE PARTICLE FINDER (binary)
+  Classes: "Square Particles" vs "Not Square"
+  Positives: PI-validated images in toolkit/Squares/
+  Negatives: sampled from other GoldStandard classes
+  Train: square_train_data/   Eval: square_eval_data/
+  Model: square_particles_resnet18.pth
+
+WHITE OVAL (current config.py example)
+  Train: white_oval_train_data/
+  Eval: white_oval_eval_data/
+  Model: white_oval_resnet18.pth
+
+FULL DIATOM TAXONOMY (original design)
+  TRAINING_DIRECTORIES = [GoldStandard, SilverStandard]
+  Many classes: Navicula, Amorphous, Background, etc.
+  Same train_cnn.py — just more subfolders and more data per class.
+
+
+================================================================================
+PART 8 — ADVANCED SCRIPTS (OPTIONAL)
+================================================================================
+
+finetune_cnn.py
+  Starts from an EXISTING .pth (must run train_cnn.py first).
+  Boosts sampling weight 5× on FINETUNE_TARGET_CLASS.
+  Use when one class is underperforming but you don't want to retrain from scratch.
+  Keep FINETUNE_EPOCHS low (5) to avoid forgetting other classes.
+
+pseudo_label_generator.py
+  Runs a teacher model on UNSORTED_RAW_DIR; copies high-confidence predictions
+  (≥ PSEUDO_LABEL_CONFIDENCE, default 0.95) into SILVER_STANDARD_DIR.
+  Silver data can be mixed into TRAINING_DIRECTORIES for scale.
+  WARNING: pseudo-labels amplify model mistakes — always human-QC a sample before
+  trusting silver data in gold-standard training.
+
+eval_v5.py
+  Alternate evaluation script — use evaluate_cnn.py unless you know you need v5.
+
+
+================================================================================
+PART 9 — DOS AND DON'TS
+================================================================================
+
+DATA LABELING — DO
+------------------
+  DO have one folder per class; names must match exactly everywhere.
+  DO get PI sign-off on defining examples for rare or ambiguous classes.
+  DO keep a separate evaluation set the model never trains on.
+  DO fix mislabels in Fast Sorter before retraining — one wrong label teaches
+     the wrong pattern hundreds of times per epoch.
+  DO include "Background" or "Amorphous" if junk crops are common — otherwise
+     the model will force junk into real classes.
+  DO balance rare classes via more labeling OR accept that training uses
+     weighted sampling (already in train_cnn.py) but still needs SOME examples.
+  DO use .tif crops consistently with how Auto Sorter will see them later.
+
+DATA LABELING — DON'T
+---------------------
+  DON'T train and test on the same images (inflated accuracy).
+  DON'T mix inconsistent class definitions (e.g. "square" means different things
+     to different labelers).
+  DON'T put unreviewed Auto Sorter output directly into GoldStandard without QC.
+  DON'T rename class folders after training without retraining — class indices
+     in the .pth file are tied to cnn_classes.json order.
+  DON'T assume filename order matters — the loader shuffles and samples randomly.
+
+TRAINING — DO
+-------------
+  DO watch Macro Val Acc, not just train accuracy (overfitting shows up as high
+     train acc, flat or dropping val macro).
+  DO save config.py paths before each experiment so you know which model is which.
+  DO use GPU when available (ai-agent-env or similar with CUDA torch).
+  DO re-run evaluate_cnn.py after every train before deploying Auto Sorter.
+
+TRAINING — DON'T
+----------------
+  DON'T set TRAINING_EPOCHS to 100 hoping for magic — validate first.
+  DON'T overwrite a good .pth without backing it up.
+  DON'T change number of classes without retraining from scratch (final layer
+     size must match).
+  DON'T ignore a class with 0 images in train split — it cannot be learned.
+
+DEPLOYMENT — DO
+---------------
+  DO spot-check Review folder regularly — that's where borderline cases live.
+  DO adjust REVIEW_CONFIDENCE_THRESHOLD if too much goes to Review (raise) or
+     too many errors slip through (lower slightly, with care).
+  DO use Fast Sorter New-only mode to QC fresh CNN dumps quickly.
+
+DEPLOYMENT — DON'T
+------------------
+  DON'T run Auto Sorter to GoldStandard destination without a backup plan —
+     it MOVES files.
+  DON'T trust 95% overall accuracy if rare class recall is 20% — read per-class
+     metrics in evaluate_cnn.py output.
+
+
+================================================================================
+PART 10 — HARDWARE & ENVIRONMENT
+================================================================================
+
+RECOMMENDED
+  NVIDIA GPU with CUDA, 8+ GB VRAM for comfortable training
+  Python 3.10+ with torch+torchvision+cuda matching your driver
+
+CHECK GPU
+  python -c "import torch; print(torch.cuda.is_available())"
+
+INSTALL (typical)
+  pip install -r requirements.txt
+  (Use CUDA build of PyTorch from pytorch.org if default pip is CPU-only)
+
+TRAINING TIME (rough)
+  Small set (~400 images, 25 epochs, GPU): ~2–3 minutes
+  Large GoldStandard (10k+ images): longer; epoch sampling caps batch size per epoch
+
+AUTO SORTER THROUGHPUT
+  GPU: hundreds to low thousands of images/minute depending on disk and size
+  CPU: much slower — usable for small batches only
+
+
+================================================================================
+PART 11 — TROUBLESHOOTING
+================================================================================
+
+"No images found in the specified directories!"
+  → TRAINING_DIRECTORIES path wrong, or no class subfolders, or empty folders.
+
+"Model or classes file missing" in Auto Sorter
+  → Run train_cnn.py first; check MODEL_SAVE_PATH and CLASSES_SAVE_PATH in config.
+
+Great train accuracy, terrible real-world performance
+  → Overfitting, label noise, or train/test distribution mismatch. More diverse
+     labels; check eval set; don't trust train acc alone.
+
+Model never predicts rare class
+  → Too few examples; add PI-validated samples; check evaluate recall; consider
+     finetune_cnn.py on that class.
+
+Class indices / wrong predictions after folder rename
+  → Retrain. Classes are alphabetical in json — order must match training.
+
+CUDA out of memory during training
+  → Close other GPU apps; train_cnn already uses batch 64 for small sets.
+     For huge data, epoch sampling limits load.
+
+Auto Sorter slow or crashes on 100k+ images
+  → Lower MEMORY_RESET_EVERY_N_IMAGES in config (e.g. 500); ensure GPU; run in
+     chunks by subfolder.
+
+
+================================================================================
+PART 12 — QUICK COMMAND REFERENCE
+================================================================================
+
+  cd standalone_cnn_toolkit
+
+  # Edit paths first
+  notepad config.py
+
+  # Train
+  python train_cnn.py
+
+  # Evaluate holdout
+  python evaluate_cnn.py
+
+  # Bulk sort with model
+  python auto_sorter.py
+
+  # Human QC / build labels
+  python fast_sorter.py
+  # or: dist\FastImageSorter.exe
+
+  # Optional: fine-tune one class
+  python finetune_cnn.py
+
+  # Optional: generate silver-standard pseudo-labels
+  python pseudo_label_generator.py
+
+
+================================================================================
+PART 13 — GLOSSARY
+================================================================================
+
+  CNN          Convolutional Neural Network — image classifier
+  ResNet-18    18-layer residual network; our default architecture
+  Transfer learning  Start from ImageNet weights, fine-tune on our crops
+  .pth         PyTorch saved model weights
+  Epoch        One pass through the training sampling schedule (not always every image)
+  Macro accuracy   Average per-class accuracy — fair when classes are imbalanced
+  Recall       Of all true class X images, how many did we correctly label X?
+  Precision    Of all images we called class X, how many were really X?
+  GoldStandard Human-verified training data (high trust)
+  SilverStandard Semi-automatic / pseudo-labeled data (lower trust, more volume)
+  Review       Auto Sorter bucket for uncertain predictions (human needed)
+  Fast Sorter  Manual keyboard tool for labeling and QC (not AI)
+
+
+================================================================================
+END OF GUIDE
+================================================================================
+
+For Fast Sorter usage Q&A, see fast_sorter_qa.txt in this folder.
